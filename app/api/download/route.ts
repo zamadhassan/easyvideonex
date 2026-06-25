@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import path from "path";
 import { validateUrl } from "@/lib/url-validator";
 import { checkRateLimit } from "@/lib/rate-limiter";
@@ -124,13 +124,13 @@ async function getTikTokUrl(videoUrl: string): Promise<string | null> {
   return null;
 }
 
-async function getPythonUrl(videoUrl: string, quality: string): Promise<string | null> {
+async function getPythonUrl(videoUrl: string, quality: string, format: string): Promise<string | null> {
   try {
-    const escapedUrl = videoUrl.replace(/"/g, '\\"');
-    const result = execSync(
-      `python "${PYTHON_SCRIPT}" "${escapedUrl}" "${quality}"`,
-      { timeout: 60000, encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 }
-    );
+    const result = execFileSync("python", [PYTHON_SCRIPT, videoUrl, quality, format], {
+      timeout: 60000,
+      encoding: "utf-8",
+      maxBuffer: 10 * 1024 * 1024,
+    });
     const data = JSON.parse(result.trim());
     if (data.success && data.downloadUrl) return data.downloadUrl;
     return null;
@@ -154,7 +154,7 @@ async function tryBackend(url: string, body: Record<string, string>, timeout = 5
 async function getVideoDownloadUrl(videoUrl: string, platform: Platform, quality: string, format: string, videoId: string): Promise<string | null> {
   // 1) Try local Python (yt-dlp) script first (fastest, most reliable)
   if (!BACKEND_API_URL) {
-    const pyUrl = await getPythonUrl(videoUrl, quality);
+    const pyUrl = await getPythonUrl(videoUrl, quality, format);
     if (pyUrl) return pyUrl;
   }
 

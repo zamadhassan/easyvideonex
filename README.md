@@ -18,8 +18,8 @@ A production-ready web application for downloading videos from popular platforms
 ## Tech Stack
 
 - **Frontend:** Next.js 15 (App Router), TypeScript, Tailwind CSS 4
-- **Deployment:** Vercel (frontend), Render/Railway (optional backend)
-- **APIs:** Next.js API Routes (serverless), Express API (backend)
+- **Deployment:** Vercel (frontend), Render (Python backend)
+- **APIs:** Next.js API Routes, FastAPI + `yt-dlp` backend
 
 ## Architecture
 
@@ -33,15 +33,15 @@ Vercel serverless functions have limitations:
 For these reasons, we have:
 
 1. **Frontend (Vercel):** URL detection, metadata display, UI
-2. **Backend API (Render/Railway):** Actual video downloading and streaming
+2. **Backend API (Render):** Direct media URL extraction with `yt-dlp`
 
 ### How It Works
 
 ```
-User → Frontend (Vercel) → Backend API (Render/Railway) → Video File
+User → Frontend (Vercel) → Backend API (Render) → Source CDN URL
 ```
 
-The frontend handles URL validation and displays metadata. When a user wants to download, the request proxies through the Vercel API route to the backend.
+The frontend handles URL validation and displays metadata. When a user wants to download, the request proxies through the Vercel API route to the Render backend and returns a one-time download URL.
 
 ## Getting Started
 
@@ -49,6 +49,7 @@ The frontend handles URL validation and displays metadata. When a user wants to 
 
 - Node.js 18+
 - npm
+- Python 3.11+ for local backend development
 
 ### Installation
 
@@ -79,6 +80,14 @@ cp .env.example .env.local
 | `BACKEND_API_URL` | No | URL of the backend API on Render/Railway |
 | `RATE_LIMIT_MAX` | No | Max requests per IP per minute (default: 30) |
 
+For production on Vercel, set `BACKEND_API_URL` to your Render backend URL, for example:
+
+```text
+BACKEND_API_URL=https://easyvideonex-api.onrender.com
+```
+
+Do not add a trailing slash.
+
 ## Project Structure
 
 ```
@@ -93,8 +102,9 @@ cp .env.example .env.local
 │   ├── terms/
 │   ├── layout.tsx
 │   └── page.tsx
-├── backend-api/               # Separate backend for actual downloading
-│   ├── server.js
+├── backend-api/               # FastAPI backend for download URL extraction
+│   ├── python-server.py
+│   ├── requirements.txt
 │   └── README.md
 ├── components/                # React components
 │   ├── Header.tsx
@@ -126,7 +136,7 @@ npm run build
 # Or deploy via Vercel CLI: vercel --prod
 ```
 
-### Backend API (Render/Railway)
+### Backend API (Render)
 
 See `backend-api/README.md` for detailed instructions.
 
