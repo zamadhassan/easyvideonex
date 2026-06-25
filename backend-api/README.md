@@ -51,6 +51,13 @@ BACKEND_API_URL=https://YOUR-HF-USERNAME-easyvideonex-api.hf.space
 
 Do not add a trailing slash.
 
+If the Space shows an error:
+
+- Confirm the Space SDK is `Docker`, not Gradio/Streamlit/Static.
+- Confirm the Space has this repo's root `Dockerfile`.
+- Confirm the Space README metadata has `sdk: docker` and `app_port: 7860`.
+- Open **Logs** in the Hugging Face Space and check the first red error line.
+
 ## Deploy On Render
 
 1. Go to Render Dashboard.

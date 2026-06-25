@@ -1,3 +1,10 @@
+---
+title: EasyVideoNex API
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Universal Video Downloader
 
 A production-ready web application for downloading videos from popular platforms. Built with Next.js 15, TypeScript, and Tailwind CSS.
