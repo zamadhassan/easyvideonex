@@ -16,6 +16,41 @@ Health check:
 http://127.0.0.1:8787/health
 ```
 
+## Deploy Without Card: Hugging Face Spaces
+
+Use this if Render asks for card details.
+
+1. Create a Hugging Face account: `https://huggingface.co/join`
+2. Go to: `https://huggingface.co/new-space`
+3. Use these settings:
+
+| Setting | Value |
+|---------|-------|
+| Space name | `easyvideonex-api` |
+| License | Any, for example `MIT` |
+| Space SDK | `Docker` |
+| Visibility | `Public` |
+| Hardware | Free CPU |
+
+4. Create the Space.
+5. Add the files from this repo to that Space, or connect/sync this GitHub repo if Hugging Face shows that option.
+6. Hugging Face will use the root `Dockerfile` and start this FastAPI backend on port `7860`.
+7. Open this URL to check health:
+
+```text
+https://YOUR-HF-USERNAME-easyvideonex-api.hf.space/health
+```
+
+If it returns `{ "status": "ok" }`, the API is ready.
+
+Use this as your Vercel environment variable:
+
+```text
+BACKEND_API_URL=https://YOUR-HF-USERNAME-easyvideonex-api.hf.space
+```
+
+Do not add a trailing slash.
+
 ## Deploy On Render
 
 1. Go to Render Dashboard.
@@ -36,7 +71,7 @@ http://127.0.0.1:8787/health
 7. Wait until Render shows **Live**.
 8. Open `/health` on the Render URL to confirm it returns `{ "status": "ok" }`.
 
-Example API base URL:
+Example Render API base URL:
 
 ```text
 https://easyvideonex-api.onrender.com
