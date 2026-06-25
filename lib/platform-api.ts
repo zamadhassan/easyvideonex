@@ -1,8 +1,6 @@
 import type { VideoInfo, QualityOption, AudioOption, Platform } from "./types";
 import { ERROR_MESSAGES } from "./constants";
 
-const BACKEND_API_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || process.env.BACKEND_API_URL || "";
-
 interface OEmbedResponse {
   title?: string;
   author_name?: string;
@@ -173,30 +171,7 @@ export async function fetchVideoInfo(
   platform: Platform,
   videoId: string
 ): Promise<VideoInfo> {
-  if (BACKEND_API_URL) {
-    return fetchVideoInfoFromBackend(url, platform, videoId);
-  }
   return fetchVideoInfoLocal(url, platform, videoId);
-}
-
-async function fetchVideoInfoFromBackend(
-  url: string,
-  platform: Platform,
-  videoId: string
-): Promise<VideoInfo> {
-  const response = await fetch(`${BACKEND_API_URL}/api/info`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url, platform, videoId }),
-    signal: AbortSignal.timeout(25000),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody.message || ERROR_MESSAGES.UNKNOWN_ERROR);
-  }
-
-  return response.json();
 }
 
 async function fetchVideoInfoLocal(
@@ -263,9 +238,7 @@ export async function getDownloadUrl(
   quality: string,
   format: string
 ): Promise<string> {
-  const apiUrl = BACKEND_API_URL ? `${BACKEND_API_URL}/api/download` : "/api/download";
-
-  const response = await fetch(apiUrl, {
+  const response = await fetch("/api/download", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url, platform, videoId, quality, format }),

@@ -10,6 +10,7 @@ import type { Platform } from "@/lib/types";
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "";
 const PYTHON_SCRIPT = path.join(process.cwd(), "backend-api", "get_url.py");
+const IS_VERCEL = process.env.VERCEL === "1";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36";
 
@@ -151,21 +152,28 @@ async function tryBackend(url: string, body: Record<string, string>, timeout = 5
   } catch { return null; }
 }
 
-async function getVideoDownloadUrl(videoUrl: string, platform: Platform, quality: string, format: string, videoId: string): Promise<string | null> {
-  // 1) Try local Python (yt-dlp) script first (fastest, most reliable)
-  if (!BACKEND_API_URL) {
+async function getVideoDownloadUrl(videoUrl: string, platform: Platform, quality: string, format: string, videoId: string, origin: string): Promise<string | null> {
+  const body = { url: videoUrl, platform, quality, format, videoId };
+
+  // 1) Try local Python (yt-dlp) script first in local development.
+  if (!BACKEND_API_URL && !IS_VERCEL) {
     const pyUrl = await getPythonUrl(videoUrl, quality, format);
     if (pyUrl) return pyUrl;
   }
 
-  // 2) Try remote backend (Render/Railway)
+  // 2) Try hosted backend (Hugging Face/Render/etc.)
   if (BACKEND_API_URL) {
-    const body = { url: videoUrl, platform, quality, format, videoId };
     const beUrl = await tryBackend(`${BACKEND_API_URL}/api/download`, body, 55000);
     if (beUrl) return beUrl;
   }
 
-  // 3) Fallback: JS strategies
+  // 3) Try Vercel Python function fallback when deployed.
+  if (origin) {
+    const vercelPyUrl = await tryBackend(`${origin}/api/extract`, body, 55000);
+    if (vercelPyUrl) return vercelPyUrl;
+  }
+
+  // 4) Fallback: JS strategies
   if (platform === "youtube" || platform === "youtube-shorts") {
     return getYouTubeUrl(videoId, quality);
   }
@@ -209,7 +217,7 @@ export async function POST(request: NextRequest) {
   const platform = detected.platform;
   const videoId = rawVideoId || detected.videoId;
 
-  const dlUrl = await getVideoDownloadUrl(url, platform, quality, format, videoId);
+  const dlUrl = await getVideoDownloadUrl(url, platform, quality, format, videoId, request.nextUrl.origin);
   if (!dlUrl) {
     return NextResponse.json({ success: false, error: { code: "NO_MEDIA", message: "Could not retrieve a download URL for this video." } }, { status: 404 });
   }
