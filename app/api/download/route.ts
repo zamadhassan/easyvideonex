@@ -161,19 +161,26 @@ async function getVideoDownloadUrl(videoUrl: string, platform: Platform, quality
     if (pyUrl) return pyUrl;
   }
 
-  // 2) Try hosted backend (Hugging Face/Render/etc.)
+  // 2) Try Vercel Python function before hosted backends in production.
+  // Hugging Face free Spaces are often blocked by YouTube/TikTok datacenter rules.
+  if (origin && IS_VERCEL) {
+    const vercelPyUrl = await tryBackend(`${origin}/api/extract`, body, 55000);
+    if (vercelPyUrl) return vercelPyUrl;
+  }
+
+  // 3) Try hosted backend (Hugging Face/Render/etc.)
   if (BACKEND_API_URL) {
     const beUrl = await tryBackend(`${BACKEND_API_URL}/api/download`, body, 55000);
     if (beUrl) return beUrl;
   }
 
-  // 3) Try Vercel Python function fallback when deployed.
-  if (origin) {
+  // 4) Try Vercel Python function as a final hosted fallback outside Vercel.
+  if (origin && !IS_VERCEL) {
     const vercelPyUrl = await tryBackend(`${origin}/api/extract`, body, 55000);
     if (vercelPyUrl) return vercelPyUrl;
   }
 
-  // 4) Fallback: JS strategies
+  // 5) Fallback: JS strategies
   if (platform === "youtube" || platform === "youtube-shorts") {
     return getYouTubeUrl(videoId, quality);
   }
