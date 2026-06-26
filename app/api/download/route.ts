@@ -14,6 +14,16 @@ const IS_VERCEL = process.env.VERCEL === "1";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36";
 
+interface DownloadLookupResult {
+  downloadUrl: string | null;
+  errors: string[];
+}
+
+interface BackendAttemptResult {
+  downloadUrl: string | null;
+  error: string | null;
+}
+
 async function tryFetchJson(url: string, timeout = 10000): Promise<Record<string, unknown> | null> {
   const res = await fetch(url, {
     headers: { "User-Agent": UA, Accept: "application/json, text/plain, */*" },
@@ -138,7 +148,23 @@ async function getPythonUrl(videoUrl: string, quality: string, format: string): 
   } catch { return null; }
 }
 
-async function tryBackend(url: string, body: Record<string, string>, timeout = 55000): Promise<string | null> {
+function getErrorMessage(value: unknown): string {
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const nestedError = record.error;
+    if (nestedError && typeof nestedError === "object") {
+      const message = (nestedError as Record<string, unknown>).message;
+      if (typeof message === "string") return message;
+    }
+    const detail = record.detail;
+    if (typeof detail === "string") return detail;
+    const message = record.message;
+    if (typeof message === "string") return message;
+  }
+  return "Unknown extractor error";
+}
+
+async function tryBackend(url: string, body: Record<string, string>, timeout = 55000): Promise<BackendAttemptResult> {
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -146,50 +172,65 @@ async function tryBackend(url: string, body: Record<string, string>, timeout = 5
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeout),
     });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.downloadUrl || data.data?.downloadUrl || null;
-  } catch { return null; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { downloadUrl: null, error: getErrorMessage(data) };
+    const downloadUrl = data.downloadUrl || data.data?.downloadUrl || null;
+    return { downloadUrl, error: downloadUrl ? null : getErrorMessage(data) };
+  } catch (err) {
+    return { downloadUrl: null, error: err instanceof Error ? err.message : "Extractor request failed" };
+  }
 }
 
-async function getVideoDownloadUrl(videoUrl: string, platform: Platform, quality: string, format: string, videoId: string, origin: string): Promise<string | null> {
+async function getVideoDownloadUrl(videoUrl: string, platform: Platform, quality: string, format: string, videoId: string, origin: string): Promise<DownloadLookupResult> {
   const body = { url: videoUrl, platform, quality, format, videoId };
+  const errors: string[] = [];
 
   // 1) Try local Python (yt-dlp) script first in local development.
   if (!BACKEND_API_URL && !IS_VERCEL) {
     const pyUrl = await getPythonUrl(videoUrl, quality, format);
-    if (pyUrl) return pyUrl;
+    if (pyUrl) return { downloadUrl: pyUrl, errors };
+    errors.push("local-python: no URL returned");
   }
 
   // 2) Try Vercel Python function before hosted backends in production.
   // Hugging Face free Spaces are often blocked by YouTube/TikTok datacenter rules.
   if (origin && IS_VERCEL) {
-    const vercelPyUrl = await tryBackend(`${origin}/api/extract`, body, 55000);
-    if (vercelPyUrl) return vercelPyUrl;
+    const attempt = await tryBackend(`${origin}/api/extract`, body, 55000);
+    if (attempt.downloadUrl) return { downloadUrl: attempt.downloadUrl, errors };
+    if (attempt.error) errors.push(`vercel-python: ${attempt.error}`);
   }
 
   // 3) Try hosted backend (Hugging Face/Render/etc.)
   if (BACKEND_API_URL) {
-    const beUrl = await tryBackend(`${BACKEND_API_URL}/api/download`, body, 55000);
-    if (beUrl) return beUrl;
+    const attempt = await tryBackend(`${BACKEND_API_URL}/api/download`, body, 55000);
+    if (attempt.downloadUrl) return { downloadUrl: attempt.downloadUrl, errors };
+    if (attempt.error) errors.push(`hosted-backend: ${attempt.error}`);
   }
 
   // 4) Try Vercel Python function as a final hosted fallback outside Vercel.
   if (origin && !IS_VERCEL) {
-    const vercelPyUrl = await tryBackend(`${origin}/api/extract`, body, 55000);
-    if (vercelPyUrl) return vercelPyUrl;
+    const attempt = await tryBackend(`${origin}/api/extract`, body, 55000);
+    if (attempt.downloadUrl) return { downloadUrl: attempt.downloadUrl, errors };
+    if (attempt.error) errors.push(`vercel-python: ${attempt.error}`);
   }
 
   // 5) Fallback: JS strategies
   if (platform === "youtube" || platform === "youtube-shorts") {
-    return getYouTubeUrl(videoId, quality);
+    const fallbackUrl = await getYouTubeUrl(videoId, quality);
+    if (fallbackUrl) return { downloadUrl: fallbackUrl, errors };
+    errors.push("youtube-js-fallback: no URL returned");
+    return { downloadUrl: null, errors };
   }
 
   if (platform === "tiktok") {
-    return getTikTokUrl(videoUrl);
+    const fallbackUrl = await getTikTokUrl(videoUrl);
+    if (fallbackUrl) return { downloadUrl: fallbackUrl, errors };
+    errors.push("tiktok-js-fallback: no URL returned");
+    return { downloadUrl: null, errors };
   }
 
-  return null;
+  errors.push(`${platform}: no fallback available`);
+  return { downloadUrl: null, errors };
 }
 
 export async function POST(request: NextRequest) {
@@ -224,15 +265,23 @@ export async function POST(request: NextRequest) {
   const platform = detected.platform;
   const videoId = rawVideoId || detected.videoId;
 
-  const dlUrl = await getVideoDownloadUrl(url, platform, quality, format, videoId, request.nextUrl.origin);
-  if (!dlUrl) {
-    return NextResponse.json({ success: false, error: { code: "NO_MEDIA", message: "Could not retrieve a download URL for this video." } }, { status: 404 });
+  const lookup = await getVideoDownloadUrl(url, platform, quality, format, videoId, request.nextUrl.origin);
+  if (!lookup.downloadUrl) {
+    const debug = request.nextUrl.searchParams.get("debug") === "1";
+    return NextResponse.json({
+      success: false,
+      error: {
+        code: "NO_MEDIA",
+        message: `Could not retrieve a download URL for this ${platform} video. Public YouTube videos are currently working; this link may be private, region-blocked, removed, or blocked by the source platform.`,
+      },
+      ...(debug ? { debug: { platform, videoId, errors: lookup.errors } } : {}),
+    }, { status: 404 });
   }
 
   const ext = format === "mp3" || format === "m4a" ? `.${format}` : ".mp4";
   const fileName = `video-${quality}${ext}`;
 
-  const token = createToken(dlUrl, ip, fileName);
+  const token = createToken(lookup.downloadUrl, ip, fileName);
 
   return NextResponse.json({ success: true, downloadUrl: `/api/stream/${token}` });
 }
