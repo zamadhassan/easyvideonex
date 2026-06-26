@@ -1,4 +1,5 @@
 import json
+import os
 from http.server import BaseHTTPRequestHandler
 
 import yt_dlp
@@ -13,11 +14,29 @@ QUALITY_MAP = {
 }
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+COOKIE_PATH = "/tmp/youtube-cookies.txt"
 
 
-def build_options(quality, output_format):
+def is_youtube_url(video_url):
+    return "youtube.com" in video_url or "youtu.be" in video_url
+
+
+def get_cookie_file():
+    cookies = os.environ.get("YOUTUBE_COOKIES") or os.environ.get("YT_DLP_COOKIES")
+    if not cookies:
+        return None
+
+    if os.path.exists(cookies):
+        return cookies
+
+    with open(COOKIE_PATH, "w", encoding="utf-8") as cookie_file:
+        cookie_file.write(cookies.replace("\\n", "\n"))
+    return COOKIE_PATH
+
+
+def build_options(quality, output_format, extra_options=None):
     audio_only = output_format in {"mp3", "m4a"} or quality == "audio"
-    return {
+    options = {
         "format": "bestaudio/best" if audio_only else QUALITY_MAP.get(quality, "best"),
         "quiet": True,
         "no_warnings": True,
@@ -32,6 +51,12 @@ def build_options(quality, output_format):
             "Accept-Language": "en-US,en;q=0.9",
         },
     }
+    cookie_file = get_cookie_file()
+    if cookie_file:
+        options["cookiefile"] = cookie_file
+    if extra_options:
+        options.update(extra_options)
+    return options
 
 
 def pick_download_url(info, quality, output_format):
@@ -79,11 +104,30 @@ def pick_download_url(info, quality, output_format):
 
 
 def extract_url(video_url, quality, output_format):
-    with yt_dlp.YoutubeDL(build_options(quality, output_format)) as ydl:
-        info = ydl.extract_info(video_url, download=False)
-    if not info:
-        return None
-    return pick_download_url(info, quality, output_format)
+    attempts = [{}]
+    if is_youtube_url(video_url):
+        attempts.extend([
+            {"extractor_args": {"youtube": {"player_client": ["android_vr"]}}},
+            {"extractor_args": {"youtube": {"player_client": ["web_safari"]}}},
+            {"extractor_args": {"youtube": {"player_client": ["mweb"]}}},
+        ])
+
+    last_error = None
+    for extra_options in attempts:
+        try:
+            with yt_dlp.YoutubeDL(build_options(quality, output_format, extra_options)) as ydl:
+                info = ydl.extract_info(video_url, download=False)
+            if info:
+                download_url = pick_download_url(info, quality, output_format)
+                if download_url:
+                    return download_url
+        except Exception as exc:
+            last_error = exc
+
+    if last_error:
+        raise last_error
+
+    return None
 
 
 class handler(BaseHTTPRequestHandler):
