@@ -179,7 +179,7 @@ function getErrorMessage(value: unknown): string {
 }
 
 function isBotVerificationError(errors: string[]): boolean {
-  return errors.some((error) => /confirm you'?re not a bot|use --cookies|requirescookies|po token|visitor data/i.test(error));
+  return errors.some((error) => /confirm you'?re not a bot|use --cookies|requirescookies|po token|visitor data|no media URL in extracted formats|requested format is not available/i.test(error));
 }
 
 async function tryBackend(url: string, body: Record<string, string>, timeout = 55000): Promise<BackendAttemptResult> {
@@ -210,29 +210,22 @@ async function getVideoDownloadUrl(videoUrl: string, platform: Platform, quality
     errors.push("local-python: no URL returned");
   }
 
-  // 2) Try Vercel Python function before hosted backends in production.
-  // Hugging Face free Spaces are often blocked by YouTube/TikTok datacenter rules.
-  if (origin && IS_VERCEL) {
-    const attempt = await tryBackend(`${origin}/api/extract`, body, 55000);
-    if (attempt.downloadUrl) return { downloadUrl: attempt.downloadUrl, errors };
-    if (attempt.error) errors.push(`vercel-python: ${attempt.error}`);
-  }
-
-  // 3) Try hosted backend (Hugging Face/Render/etc.)
+  // 2) Prefer a configured backend. This lets production use an unblocked
+  // VPS/local tunnel/residential backend instead of Vercel's datacenter IPs.
   if (BACKEND_API_URL) {
     const attempt = await tryBackend(`${BACKEND_API_URL}/api/download`, body, 55000);
     if (attempt.downloadUrl) return { downloadUrl: attempt.downloadUrl, errors };
     if (attempt.error) errors.push(`hosted-backend: ${attempt.error}`);
   }
 
-  // 4) Try Vercel Python function as a final hosted fallback outside Vercel.
-  if (origin && !IS_VERCEL) {
+  // 3) Try Vercel Python function fallback.
+  if (origin) {
     const attempt = await tryBackend(`${origin}/api/extract`, body, 55000);
     if (attempt.downloadUrl) return { downloadUrl: attempt.downloadUrl, errors };
     if (attempt.error) errors.push(`vercel-python: ${attempt.error}`);
   }
 
-  // 5) Fallback: JS strategies
+  // 4) Fallback: JS strategies
   if (platform === "youtube" || platform === "youtube-shorts") {
     const fallbackUrl = await getYouTubeUrl(videoId, quality);
     if (fallbackUrl) return { downloadUrl: fallbackUrl, errors };
@@ -292,7 +285,7 @@ export async function POST(request: NextRequest) {
       error: {
         code: "NO_MEDIA",
         message: botVerification
-          ? "YouTube is blocking media extraction with bot/cookie verification for this video. Thumbnail metadata can still load, but downloading requires YOUTUBE_COOKIES in Vercel or an unblocked backend."
+          ? "YouTube is not returning playable media formats to this server for this video. Thumbnail metadata can still load, but downloading needs an unblocked BACKEND_API_URL backend, a valid cookie/PO-token setup, or a non-datacenter backend."
           : `Could not retrieve a download URL for this ${platform} video. This link may be private, region-blocked, removed, or blocked by the source platform.`,
       },
       ...(debug ? { debug: { platform, videoId, errors: lookup.errors } } : {}),
