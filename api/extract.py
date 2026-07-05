@@ -15,6 +15,13 @@ QUALITY_MAP = {
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
 COOKIE_PATH = "/tmp/youtube-cookies.txt"
+VERSION = "extract-android-client-2026-07-05"
+
+
+class ExtractionError(Exception):
+    def __init__(self, message, attempts):
+        super().__init__(message)
+        self.attempts = attempts
 
 
 def is_youtube_url(video_url):
@@ -108,17 +115,18 @@ def pick_download_url(info, quality, output_format):
 
 
 def extract_url(video_url, quality, output_format):
-    attempts = [{}]
+    attempts = [("default", {})]
     if is_youtube_url(video_url):
         attempts.extend([
-            {"extractor_args": {"youtube": {"player_client": ["android"]}}},
-            {"extractor_args": {"youtube": {"player_client": ["android_vr"]}}},
-            {"extractor_args": {"youtube": {"player_client": ["web_safari"]}}},
-            {"extractor_args": {"youtube": {"player_client": ["mweb"]}}},
+            ("youtube-android", {"extractor_args": {"youtube": {"player_client": ["android"]}}}),
+            ("youtube-android-vr", {"extractor_args": {"youtube": {"player_client": ["android_vr"]}}}),
+            ("youtube-web-safari", {"extractor_args": {"youtube": {"player_client": ["web_safari"]}}}),
+            ("youtube-mweb", {"extractor_args": {"youtube": {"player_client": ["mweb"]}}}),
         ])
 
     last_error = None
-    for extra_options in attempts:
+    attempt_results = []
+    for name, extra_options in attempts:
         try:
             with yt_dlp.YoutubeDL(build_options(quality, output_format, extra_options)) as ydl:
                 info = ydl.extract_info(video_url, download=False)
@@ -126,13 +134,15 @@ def extract_url(video_url, quality, output_format):
                 download_url = pick_download_url(info, quality, output_format)
                 if download_url:
                     return download_url
+                attempt_results.append({"name": name, "error": "no media URL in extracted formats"})
         except Exception as exc:
             last_error = exc
+            attempt_results.append({"name": name, "error": str(exc)})
 
     if last_error:
-        raise last_error
+        raise ExtractionError(str(last_error), attempt_results)
 
-    return None
+    raise ExtractionError("No media URL found", attempt_results)
 
 
 class handler(BaseHTTPRequestHandler):
@@ -149,6 +159,13 @@ class handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_json(200, {"ok": True})
+
+    def do_GET(self):
+        self.send_json(200, {
+            "ok": True,
+            "version": VERSION,
+            "cookiesConfigured": bool(os.environ.get("YOUTUBE_COOKIES") or os.environ.get("YT_DLP_COOKIES")),
+        })
 
     def do_POST(self):
         try:
@@ -168,5 +185,12 @@ class handler(BaseHTTPRequestHandler):
                 return
 
             self.send_json(200, {"success": True, "downloadUrl": download_url})
+        except ExtractionError as exc:
+            self.send_json(502, {
+                "success": False,
+                "error": {"message": str(exc), "requiresCookies": "cookies" in str(exc).lower() or "bot" in str(exc).lower()},
+                "attempts": exc.attempts,
+                "version": VERSION,
+            })
         except Exception as exc:
-            self.send_json(500, {"success": False, "error": {"message": str(exc)}})
+            self.send_json(500, {"success": False, "error": {"message": str(exc)}, "version": VERSION})

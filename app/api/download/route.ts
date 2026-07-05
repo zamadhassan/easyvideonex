@@ -151,17 +151,35 @@ async function getPythonUrl(videoUrl: string, quality: string, format: string): 
 function getErrorMessage(value: unknown): string {
   if (value && typeof value === "object") {
     const record = value as Record<string, unknown>;
+    const attempts = Array.isArray(record.attempts)
+      ? record.attempts
+        .slice(0, 5)
+        .map((attempt) => {
+          if (!attempt || typeof attempt !== "object") return null;
+          const attemptRecord = attempt as Record<string, unknown>;
+          const name = typeof attemptRecord.name === "string" ? attemptRecord.name : "attempt";
+          const error = typeof attemptRecord.error === "string" ? attemptRecord.error.slice(0, 220) : "failed";
+          return `${name}: ${error}`;
+        })
+        .filter(Boolean)
+        .join(" | ")
+      : "";
     const nestedError = record.error;
     if (nestedError && typeof nestedError === "object") {
       const message = (nestedError as Record<string, unknown>).message;
-      if (typeof message === "string") return message;
+      if (typeof message === "string") return attempts ? `${message} (${attempts})` : message;
     }
     const detail = record.detail;
-    if (typeof detail === "string") return detail;
+    if (typeof detail === "string") return attempts ? `${detail} (${attempts})` : detail;
     const message = record.message;
-    if (typeof message === "string") return message;
+    if (typeof message === "string") return attempts ? `${message} (${attempts})` : message;
+    if (attempts) return attempts;
   }
   return "Unknown extractor error";
+}
+
+function isBotVerificationError(errors: string[]): boolean {
+  return errors.some((error) => /confirm you'?re not a bot|use --cookies|requirescookies|po token|visitor data/i.test(error));
 }
 
 async function tryBackend(url: string, body: Record<string, string>, timeout = 55000): Promise<BackendAttemptResult> {
@@ -268,11 +286,14 @@ export async function POST(request: NextRequest) {
   const lookup = await getVideoDownloadUrl(url, platform, quality, format, videoId, request.nextUrl.origin);
   if (!lookup.downloadUrl) {
     const debug = request.nextUrl.searchParams.get("debug") === "1";
+    const botVerification = isBotVerificationError(lookup.errors);
     return NextResponse.json({
       success: false,
       error: {
         code: "NO_MEDIA",
-        message: `Could not retrieve a download URL for this ${platform} video. Public YouTube videos are currently working; this link may be private, region-blocked, removed, or blocked by the source platform.`,
+        message: botVerification
+          ? "YouTube is blocking media extraction with bot/cookie verification for this video. Thumbnail metadata can still load, but downloading requires YOUTUBE_COOKIES in Vercel or an unblocked backend."
+          : `Could not retrieve a download URL for this ${platform} video. This link may be private, region-blocked, removed, or blocked by the source platform.`,
       },
       ...(debug ? { debug: { platform, videoId, errors: lookup.errors } } : {}),
     }, { status: 404 });

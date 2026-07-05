@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 const payload = {
   pong: true,
-  version: "download-fallback-2026-06-25",
+  version: "download-audit-android-client-2026-07-05",
   vercel: process.env.VERCEL === "1",
   backendConfigured: Boolean(process.env.BACKEND_API_URL),
 };
