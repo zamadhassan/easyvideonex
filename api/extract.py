@@ -21,6 +21,25 @@ def is_youtube_url(video_url):
     return "youtube.com" in video_url or "youtu.be" in video_url
 
 
+def summarize_formats(info):
+    entries = info.get("entries")
+    if entries:
+        info = entries[0] if isinstance(entries, list) else next(iter(entries), info)
+
+    summaries = []
+    for fmt in info.get("formats", [])[:12]:
+        summaries.append({
+            "id": fmt.get("format_id"),
+            "ext": fmt.get("ext"),
+            "height": fmt.get("height"),
+            "vcodec": fmt.get("vcodec"),
+            "acodec": fmt.get("acodec"),
+            "protocol": fmt.get("protocol"),
+            "hasUrl": bool(fmt.get("url")),
+        })
+    return summaries
+
+
 def get_cookie_file():
     cookies = os.environ.get("YOUTUBE_COOKIES") or os.environ.get("YT_DLP_COOKIES")
     cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64") or os.environ.get("YT_DLP_COOKIES_B64")
@@ -111,14 +130,18 @@ def pick_download_url(info, quality, output_format):
 
 
 def extract_url(video_url, quality, output_format):
-    attempts = [("default", {})]
+    attempts = []
     if is_youtube_url(video_url):
         attempts.extend([
             ("youtube-android", {"extractor_args": {"youtube": {"player_client": ["android"]}}}),
+            ("youtube-ios", {"extractor_args": {"youtube": {"player_client": ["ios"]}}}),
+            ("youtube-web", {"extractor_args": {"youtube": {"player_client": ["web"]}}}),
+            ("youtube-web-embedded", {"extractor_args": {"youtube": {"player_client": ["web_embedded"]}}}),
             ("youtube-android-vr", {"extractor_args": {"youtube": {"player_client": ["android_vr"]}}}),
             ("youtube-web-safari", {"extractor_args": {"youtube": {"player_client": ["web_safari"]}}}),
             ("youtube-mweb", {"extractor_args": {"youtube": {"player_client": ["mweb"]}}}),
         ])
+    attempts.append(("default", {}))
 
     last_error = None
     attempt_results = []
@@ -130,7 +153,11 @@ def extract_url(video_url, quality, output_format):
                 download_url = pick_download_url(info, quality, output_format)
                 if download_url:
                     return download_url
-                attempt_results.append({"name": name, "error": "no media URL in extracted formats"})
+                attempt_results.append({
+                    "name": name,
+                    "error": "no media URL in extracted formats",
+                    "formats": summarize_formats(info),
+                })
         except Exception as exc:
             last_error = exc
             attempt_results.append({"name": name, "error": str(exc)})

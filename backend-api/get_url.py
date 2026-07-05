@@ -30,14 +30,18 @@ def get_cookie_file():
 
 
 def get_extractor_attempts(video_url):
-    attempts = [{}]
+    attempts = []
     if is_youtube_url(video_url):
         attempts.extend([
             {"extractor_args": {"youtube": {"player_client": ["android"]}}},
+            {"extractor_args": {"youtube": {"player_client": ["ios"]}}},
+            {"extractor_args": {"youtube": {"player_client": ["web"]}}},
+            {"extractor_args": {"youtube": {"player_client": ["web_embedded"]}}},
             {"extractor_args": {"youtube": {"player_client": ["android_vr"]}}},
             {"extractor_args": {"youtube": {"player_client": ["web_safari"]}}},
             {"extractor_args": {"youtube": {"player_client": ["mweb"]}}},
         ])
+    attempts.append({})
     return attempts
 
 
