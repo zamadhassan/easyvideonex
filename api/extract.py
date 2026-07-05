@@ -6,14 +6,6 @@ from http.server import BaseHTTPRequestHandler
 import yt_dlp
 
 
-QUALITY_MAP = {
-    "1080p": "best[height<=1080]/18/best",
-    "720p": "best[height<=720]/18/best",
-    "480p": "best[height<=480]/18/best",
-    "360p": "best[height<=360]/18/best",
-    "240p": "best[height<=240]/18/best",
-}
-
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
 COOKIE_PATH = "/tmp/youtube-cookies.txt"
 VERSION = "extract-android-client-2026-07-05"
@@ -46,9 +38,9 @@ def get_cookie_file():
 
 
 def build_options(quality, output_format, extra_options=None):
-    audio_only = output_format in {"mp3", "m4a"} or quality == "audio"
     options = {
-        "format": "bestaudio/best" if audio_only else QUALITY_MAP.get(quality, "best"),
+        "format": "all",
+        "ignore_no_formats_error": True,
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,

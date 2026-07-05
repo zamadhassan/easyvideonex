@@ -41,6 +41,23 @@ def get_extractor_attempts(video_url: str):
         ])
     return attempts
 
+
+def has_media_format(info) -> bool:
+    entries = info.get("entries")
+    if entries:
+        info = entries[0] if isinstance(entries, list) else next(iter(entries), info)
+
+    if info.get("url"):
+        return True
+
+    for f in info.get("formats", []):
+        has_video = f.get("vcodec") and f.get("vcodec") != "none"
+        has_audio = f.get("acodec") and f.get("acodec") != "none"
+        if f.get("url") and (has_video or has_audio):
+            return True
+
+    return False
+
 class DownloadRequest(BaseModel):
     url: str
     platform: str = "youtube"
@@ -52,17 +69,9 @@ class DownloadRequest(BaseModel):
 async def download(req: DownloadRequest):
     try:
         audio_only = req.format in {"mp3", "m4a"} or req.quality == "audio"
-        quality_map = {
-            "1080p": "best[height<=1080]/18/best",
-            "720p": "best[height<=720]/18/best",
-            "480p": "best[height<=480]/18/best",
-            "360p": "best[height<=360]/18/best",
-            "240p": "best[height<=240]/18/best",
-        }
-        fmt = "bestaudio/best" if audio_only else quality_map.get(req.quality, "18/best")
-
         base_ydl_opts = {
-            "format": fmt,
+            "format": "all",
+            "ignore_no_formats_error": True,
             "quiet": True,
             "no_warnings": True,
             "extract_flat": False,
@@ -80,7 +89,7 @@ async def download(req: DownloadRequest):
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(req.url, download=False)
-                if info:
+                if info and has_media_format(info):
                     break
             except Exception as e:
                 last_error = e
