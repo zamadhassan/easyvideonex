@@ -86,6 +86,7 @@ cp .env.example .env.local
 |----------|----------|-------------|
 | `BACKEND_API_URL` | No | URL of the backend API on Render/Railway |
 | `YOUTUBE_COOKIES` | No | Netscape-format YouTube cookies for yt-dlp bot-checked videos |
+| `YOUTUBE_COOKIES_B64` | No | Base64-encoded `cookies.txt` content, recommended for Vercel |
 | `RATE_LIMIT_MAX` | No | Max requests per IP per minute (default: 30) |
 
 For production on Vercel, set `BACKEND_API_URL` to your backend URL, for example:
@@ -96,7 +97,13 @@ BACKEND_API_URL=https://your-username-easyvideonex-api.hf.space
 
 Do not add a trailing slash.
 
-If a YouTube thumbnail loads but download fails, metadata is working but media extraction may be blocked by YouTube bot checks. In that case, export YouTube cookies in Netscape `cookies.txt` format and set the full content as `YOUTUBE_COOKIES` in Vercel, then redeploy.
+If a YouTube thumbnail loads but download fails, metadata is working but media extraction may be blocked by YouTube bot checks. In that case, export YouTube cookies in Netscape `cookies.txt` format, base64-encode the full file content, set it as `YOUTUBE_COOKIES_B64` in Vercel, then redeploy.
+
+PowerShell base64 command:
+
+```powershell
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-Content -Raw .\cookies.txt)))
+```
 
 ## Project Structure
 

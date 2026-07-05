@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 from http.server import BaseHTTPRequestHandler
@@ -30,6 +31,9 @@ def is_youtube_url(video_url):
 
 def get_cookie_file():
     cookies = os.environ.get("YOUTUBE_COOKIES") or os.environ.get("YT_DLP_COOKIES")
+    cookies_b64 = os.environ.get("YOUTUBE_COOKIES_B64") or os.environ.get("YT_DLP_COOKIES_B64")
+    if cookies_b64:
+        cookies = base64.b64decode(cookies_b64).decode("utf-8")
     if not cookies:
         return None
 
@@ -165,6 +169,7 @@ class handler(BaseHTTPRequestHandler):
             "ok": True,
             "version": VERSION,
             "cookiesConfigured": bool(os.environ.get("YOUTUBE_COOKIES") or os.environ.get("YT_DLP_COOKIES")),
+            "cookiesBase64Configured": bool(os.environ.get("YOUTUBE_COOKIES_B64") or os.environ.get("YT_DLP_COOKIES_B64")),
         })
 
     def do_POST(self):

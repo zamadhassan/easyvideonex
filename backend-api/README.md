@@ -132,3 +132,4 @@ Response:
 - Render free services sleep after inactivity, so the first request can be slow.
 - This backend does not store videos.
 - `mp3`/`m4a` requests return the best direct audio URL available from the source. It does not transcode files.
+- Some YouTube videos require bot/cookie verification on datacenter IPs. Set `YOUTUBE_COOKIES_B64` to base64-encoded Netscape `cookies.txt` content if needed.
