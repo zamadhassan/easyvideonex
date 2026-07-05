@@ -6,11 +6,11 @@ import yt_dlp
 
 
 QUALITY_MAP = {
-    "1080p": "best[height<=1080]/best",
-    "720p": "best[height<=720]/best",
-    "480p": "best[height<=480]/best",
-    "360p": "best[height<=360]/best",
-    "240p": "best[height<=240]/best",
+    "1080p": "best[height<=1080]/18/best",
+    "720p": "best[height<=720]/18/best",
+    "480p": "best[height<=480]/18/best",
+    "360p": "best[height<=360]/18/best",
+    "240p": "best[height<=240]/18/best",
 }
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
@@ -72,10 +72,12 @@ def pick_download_url(info, quality, output_format):
     audio_only = output_format in {"mp3", "m4a"} or quality == "audio"
     if audio_only:
         for fmt in reversed(formats):
-            if fmt.get("vcodec") == "none" and fmt.get("url"):
+            has_audio = fmt.get("acodec") and fmt.get("acodec") != "none"
+            if fmt.get("vcodec") == "none" and has_audio and fmt.get("url"):
                 return fmt["url"]
         for fmt in reversed(formats):
-            if fmt.get("url"):
+            has_audio = fmt.get("acodec") and fmt.get("acodec") != "none"
+            if has_audio and fmt.get("url"):
                 return fmt["url"]
         return None
 
@@ -93,11 +95,13 @@ def pick_download_url(info, quality, output_format):
 
     for fmt in reversed(formats):
         height = fmt.get("height") or 0
-        if height <= requested_height and fmt.get("url"):
+        has_video = fmt.get("vcodec") and fmt.get("vcodec") != "none"
+        if height <= requested_height and has_video and fmt.get("url"):
             return fmt["url"]
 
     for fmt in reversed(formats):
-        if fmt.get("url"):
+        has_video = fmt.get("vcodec") and fmt.get("vcodec") != "none"
+        if has_video and fmt.get("url"):
             return fmt["url"]
 
     return direct_url
@@ -107,6 +111,7 @@ def extract_url(video_url, quality, output_format):
     attempts = [{}]
     if is_youtube_url(video_url):
         attempts.extend([
+            {"extractor_args": {"youtube": {"player_client": ["android"]}}},
             {"extractor_args": {"youtube": {"player_client": ["android_vr"]}}},
             {"extractor_args": {"youtube": {"player_client": ["web_safari"]}}},
             {"extractor_args": {"youtube": {"player_client": ["mweb"]}}},

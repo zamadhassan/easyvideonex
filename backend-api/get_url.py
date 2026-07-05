@@ -29,6 +29,7 @@ def get_extractor_attempts(video_url):
     attempts = [{}]
     if is_youtube_url(video_url):
         attempts.extend([
+            {"extractor_args": {"youtube": {"player_client": ["android"]}}},
             {"extractor_args": {"youtube": {"player_client": ["android_vr"]}}},
             {"extractor_args": {"youtube": {"player_client": ["web_safari"]}}},
             {"extractor_args": {"youtube": {"player_client": ["mweb"]}}},
@@ -36,13 +37,13 @@ def get_extractor_attempts(video_url):
     return attempts
 
 quality_map = {
-    "1080p": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-    "720p": "bestvideo[height<=720]+bestaudio/best[height<=720]",
-    "480p": "bestvideo[height<=480]+bestaudio/best[height<=480]",
-    "360p": "bestvideo[height<=360]+bestaudio/best[height<=360]",
-    "240p": "bestvideo[height<=240]+bestaudio/best[height<=240]",
+    "1080p": "best[height<=1080]/18/best",
+    "720p": "best[height<=720]/18/best",
+    "480p": "best[height<=480]/18/best",
+    "360p": "best[height<=360]/18/best",
+    "240p": "best[height<=240]/18/best",
 }
-fmt = "bestaudio/best" if audio_only else quality_map.get(quality, "bestvideo+bestaudio/best")
+fmt = "bestaudio/best" if audio_only else quality_map.get(quality, "18/best")
 
 try:
     base_ydl_opts = {
@@ -87,12 +88,14 @@ try:
 
     if audio_only:
         for f in reversed(formats):
-            if f.get("vcodec") == "none" and f.get("url"):
+            has_audio = f.get("acodec") and f.get("acodec") != "none"
+            if f.get("vcodec") == "none" and has_audio and f.get("url"):
                 print(json.dumps({"success": True, "downloadUrl": f["url"]}))
                 sys.exit(0)
 
         for f in reversed(formats):
-            if f.get("url"):
+            has_audio = f.get("acodec") and f.get("acodec") != "none"
+            if has_audio and f.get("url"):
                 print(json.dumps({"success": True, "downloadUrl": f["url"]}))
                 sys.exit(0)
 
@@ -111,12 +114,14 @@ try:
     if not best:
         for f in reversed(formats):
             h = f.get("height") or 0
-            if h <= req_height and f.get("url"):
+            has_video = f.get("vcodec") and f.get("vcodec") != "none"
+            if h <= req_height and has_video and f.get("url"):
                 best = f
                 break
     if not best:
         for f in reversed(formats):
-            if f.get("url"):
+            has_video = f.get("vcodec") and f.get("vcodec") != "none"
+            if has_video and f.get("url"):
                 best = f
                 break
 
